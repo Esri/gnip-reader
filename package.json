@@ -1,0 +1,21 @@
+{
+  "name": "gnip-reader",
+  "version": "0.0.1",
+  "description": "A package to query Gnip",
+  "main": "index.js",
+  "repository": "https://github.com/ArcGIS/gnip-reader.git",
+  "dependencies": {
+    "request": "~2.40.0",
+    "lodash": "~2.4.1",
+    "moment": "~2.8.1"
+  },
+  "author": {
+    "name": "Nick Furness"
+  },
+  "license": "Apache",
+  "readme": "",
+  "readmeFilename": "README.md",
+  "devDependencies": {
+    "async": "~0.9.0"
+  }
+}
