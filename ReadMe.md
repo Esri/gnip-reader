@@ -12,7 +12,7 @@ Initialize a `GnipReader` object with `username`, `password`, `account name`, an
 
 For example, if your account name is `FooInc` and your stream name is `test`, your query URL will be `https://search.gnip.com/accounts/FooInc/search/test.json`. Create your `GnipReader` like this:
 
-```
+``` JavaScript
 var GnipReader = require('gnip-reader');
 var myReader = new GnipReader('foo@fooinc.com', 'bar', 'FooInc', 'test');
 ```
@@ -28,7 +28,7 @@ Call `.search(query, callback(err, gnipRecords, moreRecordsAvailable))` to retri
 
 For example:
 
-```
+``` JavaScript
 myReader.search('esri', function(err, gnipRecords, moreRecords) {
   if (err) {
     console.error(err);
@@ -44,7 +44,7 @@ If `moreRecordsAvailable` is `true`, you can get pages of subsequent records wit
 
 **Note:** As specified by Gnip, the `query` should not be modified between calls to `.search()` and `.next()` or between calls to `.next()` and `.next()`.
 
-```
+``` JavaScript
 myReader.search('esri', function(err, gnipRecords, moreRecords) {
   if (!err) {
     console.log('Got ' + gnipRecords.length + ' Gnip Records. There are ' + 
@@ -80,7 +80,7 @@ myReader.search('esri', function(err, gnipRecords, moreRecords) {
 
 Or, using [Async.js](https://github.com/caolan/async)…
 
-```
+``` JavaScript
 var async = require('async');
 
 myReader.search('esri', function(err, gnipRecords, moreRecords) {
@@ -127,7 +127,7 @@ Call `.estimate(query, callback(err, gnipEstimates))` to retrieve time-partition
     * `err`: An error object (or null). See below.
     * `gnipEstimates`: An array of Gnip Estimates as described [here](http://support.gnip.com/apis/search_api/api_reference.html#CountRequests) (or null if `err` is not null).
 
-```
+``` JavaScript
 myReader.estimate('esri', function(err, gnipEstimates) {
   if (err) {
     console.error(err);
@@ -149,7 +149,7 @@ Note that `fromDate` and `toDate` can be one of the following:
 
 Here is a sample complex query that searches for 'esri' today, and returns pages of 10 records at a time:
 
-```
+``` JavaScript
 var moment = require('moment');
 
 var startTime = moment().startOf('day');
@@ -166,7 +166,7 @@ var complexQuery = {
 ##Error format
 Errors are an object of the following structure:
 
-```
+``` JavaScript
 { 
   statusCode: <int>,
   url: <searchStreamUrl>,
@@ -180,7 +180,7 @@ Errors are an object of the following structure:
 
 For example:
 
-```
+``` JavaScript
 { 
   statusCode: 422,
   url: 'https://search.gnip.com/accounts/FooInc/search/test.json',
@@ -232,5 +232,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 A copy of the license is available in the repository's [license.txt](license.txt) file.
-[](Esri Tags: NodeJS GeoServices REST Gnip)
+[](Esri Tags: NodeJS REST Gnip)
 [](Esri Language: JavaScript)
