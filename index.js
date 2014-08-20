@@ -135,7 +135,7 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
           statusCode: response.statusCode,
           url: requestOptions.url,
           parameters: requestOptions.form,
-          error: err?err:body.error
+          error: err?err:body?body.error:'Unknown Error'
         };
         callback(gnipErr, null, null);
       }
