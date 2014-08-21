@@ -5,17 +5,21 @@ var request = require('request'),
 
 var gnipTimeFormat = 'YYYYMMDDHHmm';
 
-function GnipReader(username, password, accountName, stream, maxResults) {
+function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults) {
   stream = stream || 'prod';
 
   // Object properties
   var options = {
-    username: username,
-    password: password,
     accountName: accountName,
     stream: stream
   };
-  // TODO: Validate Options
+
+  if ({}.toString.call(password) === '[object String]') {
+    options.username = usernameOrAuthKey;
+    options.password = password;
+  } else {
+    options.gnipAuthKey = usernameOrAuthKey;
+  }
 
   var templateUrl = util.format('https://search.gnip.com/accounts/%s/search/%s%s.json', options.accountName, options.stream),
       countSuffix = '/counts';
@@ -86,15 +90,21 @@ function GnipReader(username, password, accountName, stream, maxResults) {
   }
 
   function buildOptions(additionalPayload, getEstimate) {
-    return _.merge({
-      url: util.format(templateUrl, (getEstimate === true)?countSuffix:''),
+    var authPayload = (options.gnipAuthKey !== undefined) ? {
+      headers: {
+        'authorization': 'Basic ' + options.gnipAuthKey
+      }
+    } : {
       auth: {
         'user': options.username, 
         'pass': options.password
-      },
+      }
+    };
+    return _.merge({
+      url: util.format(templateUrl, (getEstimate === true)?countSuffix:''),
       gzip: true,
       json: true
-    }, additionalPayload);
+    }, authPayload, additionalPayload);
   }
 
   function doQuery(optionsOrQuery, getEstimate, useNext, callback) {
