@@ -3,7 +3,14 @@ var request = require('request'),
     _ = require('lodash'),
     moment = require('moment');
 
-var gnipTimeFormat = 'YYYYMMDDHHmm';
+
+// For Gnip settings, see:
+//    http://support.gnip.com/apis/search_api/api_reference.html#SearchRequests
+var gnipTimeFormat = 'YYYYMMDDHHmm',
+    gnipDefaultPagesize = 100, // Gnip default as of 2014.08.23
+    gnipMinPagesize = 10,      // Gnip min as of 2014.08.23
+    gnipMaxPagesize = 500;     // Gnip max as of 2014.08.23
+
 
 function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults) {
   stream = stream || 'prod';
@@ -78,6 +85,31 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
     });
   }
 
+  function limitPageSize(options) {
+    if (options.hasOwnProperty('maxResults') &&
+        {}.toString.call(options.maxResults) === '[object Number]' &&
+        Math.round(options.maxResults) === options.maxResults) {
+      options.maxResults = Math.min(gnipMaxPagesize, Math.max(gnipMinPagesize, options.maxResults));
+    }
+  }
+
+  function getPageSize(options) {
+    if (options.hasOwnProperty('maxResults') &&
+        {}.toString.call(options.maxResults) === '[object Number]' &&
+        Math.round(options.maxResults) === options.maxResults) {
+      return options.maxResults;
+    } else {
+      return gnipDefaultPagesize;
+    }
+  }
+
+  function optimizePagesize(options, numberRequested) {
+    if (!options.hasOwnProperty('maxResults')) {
+      options.maxResults = Math.max(gnipMinPagesize, Math.min(gnipMaxPagesize, numberRequested));
+    }
+  }
+
+
   function parseOptions(options) {
     if ({}.toString.call(options) === '[object String]') {
       options = {
@@ -85,6 +117,7 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
       };
     } else {
       parseDates(options);
+      limitPageSize(options);
     }
     return options;
   }
@@ -141,6 +174,64 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
       }
     });
   }
+
+  this.fullSearch = function(optionsOrQuery, maxRecords, pageCallback, finalCallback) {
+    var totalRecords = [],
+        uniqueIds = [],
+        pageNumber = 0;
+
+    if ({}.toString.call(pageCallback) !== '[object Function]') {
+      // The caller must specify a page callback, even if it just returns true.
+      // This is to ensure that the caller consciously burns through their 
+      // Gnip allowance, and not by omission or mistake.
+      return finalCallback('You must provide a pageCallback() function, ' +
+                    'which must return true to load the next page of records, ' +
+                    'or false to stop loading.', null);
+    }
+
+    if (maxRecords !== null &&
+        {}.toString.call(maxRecords) !== '[object Number]' ||
+        Math.round(maxRecords) !== maxRecords ||
+        maxRecords < 1) {
+      return finalCallback('You must provide an integer maxRecord value (or null to retrieve all records)', null);
+    }
+
+    var options = parseOptions(optionsOrQuery);
+    optimizePagesize(options, maxRecords);
+
+    doQuery(options, false, false, function loadNextPage(err, pageData, morePages) {
+      if (!err) {
+        pageNumber += 1;
+        var duplicates = _.remove(pageData, function(gnipRecord) {
+          return _.contains(uniqueIds, gnipRecord.id);
+        });
+        if (duplicates.length > 0) {
+          console.log('Page ' + pageNumber + ' had ' + duplicates.length + ' duplicate(s)');
+          console.log(_.pluck(duplicates, 'id'));
+        }
+        totalRecords = totalRecords.concat(pageData);
+        uniqueIds = uniqueIds.concat(_.pluck(pageData, 'id'));
+
+        var continueRequested = pageCallback(pageData, pageNumber);
+        var finished = true;
+
+        if (morePages && continueRequested && maxRecords > totalRecords.length) {
+          finished = false;
+          if (maxRecords - totalRecords.length < getPageSize(options)) {
+            // Don't get more tweets than we asked for
+            options.maxResults = maxRecords - totalRecords.length;
+          }
+          doQuery(options, false, true, loadNextPage);
+        }
+
+        if (finished) {
+          return finalCallback(null, totalRecords);
+        }
+      } else {
+        return finalCallback(err, totalRecords);
+      }
+    });
+  };
 
   this.search = function(optionsOrQuery, callback) {
     doQuery(optionsOrQuery, false, false, callback);
