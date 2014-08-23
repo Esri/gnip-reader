@@ -9,12 +9,27 @@ var username = 'your-gnip-login-email-address',
 
 var query = 'esri';
 
-var startTime = moment().startOf('day');
-var endTime = moment(startTime).add(12, 'hours');
-var complexQuery = {query: query, maxResults: 10, fromDate: startTime, toDate: endTime};
-
+var startTime = moment().subtract(2, 'days').startOf('day');
+var endTime = moment();//moment(startTime).add(12, 'hours');
+var complexQuery = {
+  query: query, 
+  // maxResults: 13,
+  fromDate: startTime//, 
+  // toDate: endTime
+};
 
 var myReader = new GnipReader(username, password, account, stream);
+
+myReader.fullSearch(complexQuery, 900, function(data, pageNum) {
+  console.log(data.length + ' records in page ' + pageNum);
+  return true; 
+}, function(err, allData) {
+  if (!err) {
+    console.log('Got ' + allData.length + ' records!');
+  } else {
+    console.error(err);
+  }
+});
 
 
 myReader.search(complexQuery, function(err, gnipRecords, moreRecords) {
