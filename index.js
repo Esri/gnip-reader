@@ -105,7 +105,9 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
 
   function optimizePagesize(options, numberRequested) {
     if (!options.hasOwnProperty('maxResults')) {
-      options.maxResults = Math.max(gnipMinPagesize, Math.min(gnipMaxPagesize, numberRequested));
+      var num = numberRequested!==null?numberRequested:gnipMaxPagesize;
+      options.maxResults = Math.max(gnipMinPagesize, Math.min(gnipMaxPagesize, num));
+      console.log('Optimized page size to: ' + options.maxResults);
     }
   }
 
@@ -190,9 +192,9 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
     }
 
     if (maxRecords !== null &&
-        {}.toString.call(maxRecords) !== '[object Number]' ||
+        ({}.toString.call(maxRecords) !== '[object Number]' ||
         Math.round(maxRecords) !== maxRecords ||
-        maxRecords < 1) {
+        maxRecords < 1)) {
       return finalCallback('You must provide an integer maxRecord value (or null to retrieve all records)', null);
     }
 
@@ -202,6 +204,8 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
     doQuery(options, false, false, function loadNextPage(err, pageData, morePages) {
       if (!err) {
         pageNumber += 1;
+
+        // Check for and skip duplicates.
         var duplicates = _.remove(pageData, function(gnipRecord) {
           return _.contains(uniqueIds, gnipRecord.id);
         });
@@ -209,21 +213,31 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
           console.log('Page ' + pageNumber + ' had ' + duplicates.length + ' duplicate(s)');
           console.log(_.pluck(duplicates, 'id'));
         }
+
+        // Update running totals
         totalRecords = totalRecords.concat(pageData);
         uniqueIds = uniqueIds.concat(_.pluck(pageData, 'id'));
 
+        // See if the caller wants more pages
         var continueRequested = pageCallback(pageData, pageNumber);
-        var finished = true;
 
-        if (morePages && continueRequested && maxRecords > totalRecords.length) {
+        // If so, get the next page unless we've hit our requested limit (if any)
+        var finished = true;
+        if (morePages && continueRequested && 
+            (maxRecords === null || maxRecords > totalRecords.length)) {
+          // Do not send the final callback yet.
           finished = false;
-          if (maxRecords - totalRecords.length < getPageSize(options)) {
-            // Don't get more tweets than we asked for
+          // Adjust the final request size if need be.
+          if (maxRecords !== null && 
+              maxRecords - totalRecords.length < getPageSize(options)) {
+            // Don't get more tweets than we asked for (costs $$$)
             options.maxResults = maxRecords - totalRecords.length;
           }
+          // Make the next request
           doQuery(options, false, true, loadNextPage);
         }
 
+        // TODO - can this just be the "else" to the above "if"???
         if (finished) {
           return finalCallback(null, totalRecords);
         }
