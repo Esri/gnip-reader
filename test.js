@@ -20,7 +20,19 @@ var complexQuery = {
 
 var myReader = new GnipReader(username, password, account, stream);
 
-myReader.fullSearch(complexQuery, 900, function(data, pageNum) {
+myReader.estimate(complexQuery, function(err, gnipEstimates) {
+  if (err) {
+    console.error(err);
+  } else {
+    var count = 0;
+    for (var i=0; i<gnipEstimates.length; i++) {
+      count += gnipEstimates[i].count;
+    }
+    console.log('Got ' + gnipEstimates.length + ' Gnip Estimate slots with a total of ' + count + ' records.');
+  }
+});
+
+myReader.fullSearch(complexQuery, null, function(data, pageNum) {
   console.log(data.length + ' records in page ' + pageNum);
   return true; 
 }, function(err, allData) {
@@ -32,75 +44,67 @@ myReader.fullSearch(complexQuery, 900, function(data, pageNum) {
 });
 
 
-myReader.search(complexQuery, function(err, gnipRecords, moreRecords) {
-  if (!err) {
-    console.log('Got ' + gnipRecords.length + ' Gnip Records. There are ' + 
-                (moreRecords?'':'no ') + 'more records.');
-    if (moreRecords) {
-      var count = 2,
-          totalRecords = gnipRecords;
+// myReader.search(complexQuery, function(err, gnipRecords, moreRecords) {
+//   if (!err) {
+//     console.log('Got ' + gnipRecords.length + ' Gnip Records. There are ' + 
+//                 (moreRecords?'':'no ') + 'more records.');
+//     if (moreRecords) {
+//       var count = 2,
+//           totalRecords = gnipRecords;
 
-      var getMoreRecords = function() {
-        myReader.next(complexQuery, function(err, gnipRecords, moreRecords) {
-          if (!err) {
-            console.log('Page ' + count++ + ': ' + gnipRecords.length + ' more records');
-            totalRecords = totalRecords.concat(gnipRecords);
-            if (moreRecords) {
-              getMoreRecords();
-            } else {
-              console.log('Got a total of ' + totalRecords.length + ' records!');
-            }
-          } else {
-            console.error('Error geting page ' + --count + '. Aborting: ' + err);
-          }
-        });
-      };
+//       var getMoreRecords = function() {
+//         myReader.next(complexQuery, function(err, gnipRecords, moreRecords) {
+//           if (!err) {
+//             console.log('Page ' + count++ + ': ' + gnipRecords.length + ' more records');
+//             totalRecords = totalRecords.concat(gnipRecords);
+//             if (moreRecords) {
+//               getMoreRecords();
+//             } else {
+//               console.log('Got a total of ' + totalRecords.length + ' records!');
+//             }
+//           } else {
+//             console.error('Error geting page ' + --count + '. Aborting: ' + err);
+//           }
+//         });
+//       };
 
-      // Kick off loading additional pages…
-      getMoreRecords();
-    }
-  } else {
-    console.error(err);
-  }
-});
+//       // Kick off loading additional pages…
+//       getMoreRecords();
+//     }
+//   } else {
+//     console.error(err);
+//   }
+// });
 
-myReader.estimate(query, function(err, gnipEstimates) {
-  if (err) {
-    console.error(err);
-  } else {
-    console.log('Got ' + gnipEstimates.length + ' Gnip Estimates.');
-  }
-});
+// myReader.search(complexQuery, function(err, gnipRecords, moreRecords) {
+//   if (err) {
+//     console.error(err);
+//   } else {
+//     console.log('Got ' + gnipRecords.length + ' Gnip Records. There are ' + (moreRecords?'':'no ') + 'more records.');
+//     if (moreRecords) {
+//       var count = 2,
+//           totalRecords = gnipRecords;
 
-myReader.search(complexQuery, function(err, gnipRecords, moreRecords) {
-  if (err) {
-    console.error(err);
-  } else {
-    console.log('Got ' + gnipRecords.length + ' Gnip Records. There are ' + (moreRecords?'':'no ') + 'more records.');
-    if (moreRecords) {
-      var count = 2,
-          totalRecords = gnipRecords;
-
-      async.whilst(
-        function() { return moreRecords; },
-        function(callback) {
-          myReader.next(complexQuery, function(err, gnipRecords, getAnotherPage) {
-            if (!err) {
-              console.log('Page ' + count++ + ': ' + gnipRecords.length + ' more records');
-              totalRecords = totalRecords.concat(gnipRecords);
-              moreRecords = getAnotherPage;              
-            }
-            callback(err);
-          });
-        },
-        function(err) {
-          if (err) {
-            console.error('Error geting page ' + --count + '. Aborting: ' + err);
-          } else {
-            console.log('Got a total of ' + totalRecords.length + ' records!');
-          }
-        }
-      );
-    }
-  }
-});
+//       async.whilst(
+//         function() { return moreRecords; },
+//         function(callback) {
+//           myReader.next(complexQuery, function(err, gnipRecords, getAnotherPage) {
+//             if (!err) {
+//               console.log('Page ' + count++ + ': ' + gnipRecords.length + ' more records');
+//               totalRecords = totalRecords.concat(gnipRecords);
+//               moreRecords = getAnotherPage;              
+//             }
+//             callback(err);
+//           });
+//         },
+//         function(err) {
+//           if (err) {
+//             console.error('Error geting page ' + --count + '. Aborting: ' + err);
+//           } else {
+//             console.log('Got a total of ' + totalRecords.length + ' records!');
+//           }
+//         }
+//       );
+//     }
+//   }
+// });

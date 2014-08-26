@@ -3,136 +3,65 @@ var request = require('request'),
     _ = require('lodash'),
     moment = require('moment');
 
+var dateUtils = require('./lib/dates.js'),
+    pageUtils = require('./lib/pages.js');
 
-// For Gnip settings, see:
-//    http://support.gnip.com/apis/search_api/api_reference.html#SearchRequests
-var gnipTimeFormat = 'YYYYMMDDHHmm',
-    gnipDefaultPagesize = 100, // Gnip default as of 2014.08.23
-    gnipMinPagesize = 10,      // Gnip min as of 2014.08.23
-    gnipMaxPagesize = 500;     // Gnip max as of 2014.08.23
+function parseOptions(options) {
+  if ({}.toString.call(options) === '[object String]') {
+    options = {
+      query: options
+    };
+  } else {
+    dateUtils.parseDates(options);
+    pageUtils.limitPageSize(options);
+  }
+  return options;
+}
 
 
-function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults) {
-  stream = stream || 'prod';
+
+function GnipReader(usernameOrAuthKey, password, accountName, stream, requestPageSize) {
+  stream = stream || 'test';
 
   // Object properties
-  var options = {
+  var __options = {
     accountName: accountName,
     stream: stream
   };
 
   if ({}.toString.call(password) === '[object String]') {
-    options.username = usernameOrAuthKey;
-    options.password = password;
+    __options.username = usernameOrAuthKey;
+    __options.password = password;
   } else {
-    options.gnipAuthKey = usernameOrAuthKey;
+    __options.gnipAuthKey = usernameOrAuthKey;
   }
 
-  var templateUrl = util.format('https://search.gnip.com/accounts/%s/search/%s%s.json', options.accountName, options.stream),
+  var templateUrl = util.format('https://search.gnip.com/accounts/%s/search/%s%s.json', __options.accountName, __options.stream),
       countSuffix = '/counts';
 
   this.nextKey = null;
-  this.maxResults = maxResults || null;
+  this.requestPageSize = requestPageSize || null;
 
   var self = this;
 
   function overridableOptions() {
     var overridables = {};
-    if (self.maxResults) {
-      overridables.maxResults = self.maxResults;
+    if (self.requestPageSize) {
+      overridables.requestPageSize = self.requestPageSize;
     }
     return overridables;
   }
 
-  function gnipDate(date) {
-    return moment(date).format(gnipTimeFormat);
-  }
-
-  function parseDates(options) {
-    var dateKeys = ['fromDate', 'toDate'];
-    _.forEach(dateKeys, function(dateKey) {
-      if (_.has(options, dateKey)) {
-        var parsedValue = null;
-        switch ({}.toString.call(options[dateKey])) {
-          case '[object Object]':
-            if (moment.isMoment(options[dateKey])) {
-              parsedValue = options[dateKey];
-            }
-            break;
-          case '[object String]':
-            // Is this a Gnip date?
-            var m = moment(options[dateKey], 'YYYYMMDDHHmm');
-            if (!m.isValid()) {
-              // If not, is it a normal date string?
-              m = moment(options[dateKey]);
-              if (!m.isValid()) {
-                // That's no good. Abort.
-                throw options[dateKey] + ' is not a valid string for ' + dateKey + '!';
-              }
-            }
-            parsedValue = m.toDate();
-            break;
-          case '[object Date]':
-            parsedValue = options[dateKey];
-          break;
-        }
-        if (parsedValue !== null) {
-          options[dateKey] = gnipDate(parsedValue);
-        } else {
-          delete options[dateKey];
-        }
-      }
-    });
-  }
-
-  function limitPageSize(options) {
-    if (options.hasOwnProperty('maxResults') &&
-        {}.toString.call(options.maxResults) === '[object Number]' &&
-        Math.round(options.maxResults) === options.maxResults) {
-      options.maxResults = Math.min(gnipMaxPagesize, Math.max(gnipMinPagesize, options.maxResults));
-    }
-  }
-
-  function getPageSize(options) {
-    if (options.hasOwnProperty('maxResults') &&
-        {}.toString.call(options.maxResults) === '[object Number]' &&
-        Math.round(options.maxResults) === options.maxResults) {
-      return options.maxResults;
-    } else {
-      return gnipDefaultPagesize;
-    }
-  }
-
-  function optimizePagesize(options, numberRequested) {
-    if (!options.hasOwnProperty('maxResults')) {
-      var num = numberRequested!==null?numberRequested:gnipMaxPagesize;
-      options.maxResults = Math.max(gnipMinPagesize, Math.min(gnipMaxPagesize, num));
-      console.log('Optimized page size to: ' + options.maxResults);
-    }
-  }
-
-
-  function parseOptions(options) {
-    if ({}.toString.call(options) === '[object String]') {
-      options = {
-        query: options
-      };
-    } else {
-      parseDates(options);
-      limitPageSize(options);
-    }
-    return options;
-  }
 
   function buildOptions(additionalPayload, getEstimate) {
-    var authPayload = (options.gnipAuthKey !== undefined) ? {
+    var authPayload = (__options.gnipAuthKey !== undefined) ? {
       headers: {
-        'authorization': 'Basic ' + options.gnipAuthKey
+        'authorization': 'Basic ' + __options.gnipAuthKey
       }
     } : {
       auth: {
-        'user': options.username, 
-        'pass': options.password
+        'user': __options.username, 
+        'pass': __options.password
       }
     };
     return _.merge({
@@ -177,74 +106,8 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
     });
   }
 
-  this.fullSearch = function(optionsOrQuery, maxRecords, pageCallback, finalCallback) {
-    var totalRecords = [],
-        uniqueIds = [],
-        pageNumber = 0;
-
-    if ({}.toString.call(pageCallback) !== '[object Function]') {
-      // The caller must specify a page callback, even if it just returns true.
-      // This is to ensure that the caller consciously burns through their 
-      // Gnip allowance, and not by omission or mistake.
-      return finalCallback('You must provide a pageCallback() function, ' +
-                    'which must return true to load the next page of records, ' +
-                    'or false to stop loading.', null);
-    }
-
-    if (maxRecords !== null &&
-        ({}.toString.call(maxRecords) !== '[object Number]' ||
-        Math.round(maxRecords) !== maxRecords ||
-        maxRecords < 1)) {
-      return finalCallback('You must provide an integer maxRecord value (or null to retrieve all records)', null);
-    }
-
-    var options = parseOptions(optionsOrQuery);
-    optimizePagesize(options, maxRecords);
-
-    doQuery(options, false, false, function loadNextPage(err, pageData, morePages) {
-      if (!err) {
-        pageNumber += 1;
-
-        // Check for and skip duplicates.
-        var duplicates = _.remove(pageData, function(gnipRecord) {
-          return _.contains(uniqueIds, gnipRecord.id);
-        });
-        if (duplicates.length > 0) {
-          console.log('Page ' + pageNumber + ' had ' + duplicates.length + ' duplicate(s)');
-          console.log(_.pluck(duplicates, 'id'));
-        }
-
-        // Update running totals
-        totalRecords = totalRecords.concat(pageData);
-        uniqueIds = uniqueIds.concat(_.pluck(pageData, 'id'));
-
-        // See if the caller wants more pages
-        var continueRequested = pageCallback(pageData, pageNumber);
-
-        // If so, get the next page unless we've hit our requested limit (if any)
-        var finished = true;
-        if (morePages && continueRequested && 
-            (maxRecords === null || maxRecords > totalRecords.length)) {
-          // Do not send the final callback yet.
-          finished = false;
-          // Adjust the final request size if need be.
-          if (maxRecords !== null && 
-              maxRecords - totalRecords.length < getPageSize(options)) {
-            // Don't get more tweets than we asked for (costs $$$)
-            options.maxResults = maxRecords - totalRecords.length;
-          }
-          // Make the next request
-          doQuery(options, false, true, loadNextPage);
-        }
-
-        // TODO - can this just be the "else" to the above "if"???
-        if (finished) {
-          return finalCallback(null, totalRecords);
-        }
-      } else {
-        return finalCallback(err, totalRecords);
-      }
-    });
+  this.estimate = function(optionsOrQuery, callback) {
+    doQuery(optionsOrQuery, true, false, callback);
   };
 
   this.search = function(optionsOrQuery, callback) {
@@ -255,8 +118,75 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, maxResults
     doQuery(optionsOrQuery, false, true, callback);
   };
 
-  this.estimate = function(optionsOrQuery, callback) {
-    doQuery(optionsOrQuery, true, false, callback);
+  this.fullSearch = function(optionsOrQuery, maxRecords, pageCallback, finalCallback) {
+    if ({}.toString.call(pageCallback) !== '[object Function]') {
+      // The caller must specify a page callback, even if it just returns true.
+      // This is to ensure that the caller consciously burns through their 
+      // Gnip allowance, and not by omission or mistake.
+      return finalCallback('You must provide a pageCallback() function, ' +
+                    'which must return true to load the next page of records, ' +
+                    'or false to stop loading.', null);
+    }
+
+    // Likewise, the caller must pass in a maxRecords value or explicitly set it to null.
+    if (maxRecords !== null &&
+        ({}.toString.call(maxRecords) !== '[object Number]' ||
+        Math.round(maxRecords) !== maxRecords ||
+        maxRecords < 1)) {
+      return finalCallback('You must provide an integer maxRecord value (or null to retrieve all records)', null);
+    }
+
+    // Now get an options object we can use over and over again, adding our own
+    // defaults or calculated value to so that we can optimize paging where necessary.
+    var options = parseOptions(optionsOrQuery);
+    pageUtils.optimizePagesize(options, maxRecords);
+
+    // Some variables for building up the final result.
+    var totalRecords = [],
+        uniqueIds = [],
+        pageNumber = 0;
+
+    // Fire off the first page request...
+    doQuery(options, false, false, function loadNextPage(err, pageData, morePages) {
+      if (!err) {
+        pageNumber += 1;
+
+        // Check for and skip duplicates (can happen in edge-cases).
+        var duplicates = _.remove(pageData, function(gnipRecord) {
+          return _.contains(uniqueIds, gnipRecord.id);
+        });
+        if (duplicates.length > 0) {
+          console.log('Page ' + pageNumber + ' had ' + duplicates.length + ' duplicate(s)');
+          console.log(_.pluck(duplicates, 'id'));
+        }
+
+        // Update running collections
+        totalRecords = totalRecords.concat(pageData);
+        uniqueIds = uniqueIds.concat(_.pluck(pageData, 'id'));
+
+        // See if the caller wants more pages
+        var continueRequested = pageCallback(pageData, pageNumber);
+
+        // If so, get the next page unless we've hit our requested limit (if any)
+        if (morePages && continueRequested && 
+            (maxRecords === null || maxRecords > totalRecords.length)) {
+          // Adjust the final request size if need be.
+          if (maxRecords !== null && 
+              maxRecords - totalRecords.length < pageUtils.getPageSize(options)) {
+            // Don't get more tweets than we asked for (costs $$$)
+            options.maxResults = maxRecords - totalRecords.length;
+          }
+          // Make the next request
+          doQuery(options, false, true, loadNextPage);
+        } else {
+          // We're done.
+          return finalCallback(null, totalRecords);
+        }
+      } else {
+        // Abort immediately with any error we got.
+        return finalCallback(err, totalRecords);
+      }
+    });
   };
 }
 

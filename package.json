@@ -1,6 +1,6 @@
 {
   "name": "gnip-reader",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A package to query Gnip",
   "main": "index.js",
   "repository": "https://github.com/ArcGIS/gnip-reader.git",
