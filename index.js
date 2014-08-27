@@ -146,10 +146,24 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, requestPag
         uniqueIds = [],
         pageNumber = 0;
 
+    var readProgress = 0,
+        expectedPageCount = null;
+
+    if (maxRecords !== null) {
+      expectedPageCount = Math.ceiling(maxRecords / pageUtils.getPageSize(options));
+      console.log('Expecting ~' + expectedPageCount + ' pages.');
+    }
+
     // Fire off the first page request...
     doQuery(options, false, false, function loadNextPage(err, pageData, morePages) {
       if (!err) {
         pageNumber += 1;
+        if (expectedPageCount !== null) {
+          if (pageNumber > expectedPageCount) {
+            expectedPageCount = pageNumber + 1;
+          }
+          readProgress = 100 * pageNumber / expectedPageCount;
+        }
 
         // Check for and skip duplicates (can happen in edge-cases).
         var duplicates = _.remove(pageData, function(gnipRecord) {
@@ -165,7 +179,7 @@ function GnipReader(usernameOrAuthKey, password, accountName, stream, requestPag
         uniqueIds = uniqueIds.concat(_.pluck(pageData, 'id'));
 
         // See if the caller wants more pages
-        var continueRequested = pageCallback(pageData, pageNumber);
+        var continueRequested = pageCallback(pageData, pageNumber, readProgress);
 
         // If so, get the next page unless we've hit our requested limit (if any)
         if (morePages && continueRequested && 
